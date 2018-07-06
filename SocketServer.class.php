@@ -18,6 +18,8 @@ class SocketServer
 	const DS = '|';
 	const RESP_OK = 'OK';
 	
+	protected static $vars = array(0 => 'code', 1 => 'name', 2 => 'count', 3 => 'max_beds', 4 => 'max_extra_beds', 5 => 'description');
+	
 	const LNG_DAY = 'ден';
 	const LNG_DAYS = 'дни';
 	
