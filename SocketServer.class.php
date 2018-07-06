@@ -83,14 +83,18 @@ class SocketServer
 	{
 		$res = [];
 		$hotel_id = $data['hotel_id'];
+		
+		// Изчисляване на продължимост на престоя
 		$days = self::dateDiff($data['start_date'], $data['end_date']);
 		
 		$date = str_replace('-', '', $data['start_date']);
 		
 		$dataConnect = $this->getHotelConnection($hotel_id);
 		
+		// Установяване на връзка към сървъра на хотела
 		$this->connect($dataConnect['ip'], $dataConnect['port']);
 		
+		// Извличане на всички стаи на хотела от текущата база данни
 		$rooms = $this->iaDb->all(iaDb::ALL_COLUMNS_SELECTION, "`hotel_id` = '{$hotel_id}'", 0, null, self::$_tableRooms);
 		
 		// Формиране на командата
@@ -126,6 +130,7 @@ class SocketServer
 					$key = array_search($re, array_column($rooms, 'code'));
 					if ($key)
 					{
+						// Добавяне на информацията от съществуващата база данни към отговора
 						$res[$i]['data'] = $rooms[$key];
 					}
 				}
