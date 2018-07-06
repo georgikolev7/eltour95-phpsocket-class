@@ -18,6 +18,9 @@ class SocketServer
 	const DS = '|';
 	const RESP_OK = 'OK';
 	
+	const LNG_DAY = 'ден';
+	const LNG_DAYS = 'дни';
+	
 	public function __construct()
 	{
 		set_time_limit(0);
@@ -46,12 +49,7 @@ class SocketServer
 		return socket_write($this->socket, $cmd . chr(13) . chr(10)) or die("socket_write failure. Request " . $cmd . " is not sent!");
 	}
 	
-	public static function parseRoomsResponse($response)
-	{
-		
-	}
-	
-	public function createReservation($room = false, $booking)
+	public function createResv($room = false, $booking)
 	{
 		// Формиране на командата
 		$cmd = self::CMD_CREATE_RESV . self::DS .  'PSMe';
@@ -79,12 +77,19 @@ class SocketServer
 		}
 	}
 	
-	public function checkRoomAvailability($room = false, $date, $days)
+	public function checkAvailability($data)
 	{
 		$res = [];
+		$hotel_id = $data['hotel_id'];
+		$days = self::dateDiff($data['start_date'], $data['end_date']);
 		
-		$date = '20180704';
-		$days = 7;
+		$date = str_replace('-', '', $data['start_date']);
+		
+		$dataConnect = $this->getHotelConnection($hotel_id);
+		
+		$this->connect($dataConnect['ip'], $dataConnect['port']);
+		
+		$rooms = $this->iaDb->all(iaDb::ALL_COLUMNS_SELECTION, "`hotel_id` = '{$hotel_id}'", 0, null, self::$_tableRooms);
 		
 		// Формиране на командата
 		$cmd = self::CMD_AVAL_ROOMS . self::DS .  'PSMe|LABG';
@@ -100,6 +105,7 @@ class SocketServer
 		if (mb_substr($response, 0, 2) == self::RESP_OK)
 		{
 			$resp = mb_substr($response, 3, null);
+			$resp = rtrim($resp);
 			$resp = rtrim($resp, PHP_EOL);
 			$resp = rtrim($resp, self::DS);
 			
@@ -108,12 +114,25 @@ class SocketServer
 			$i = 0;
 			foreach ($resp as $k => $re)
 			{
-				$code = ($k % 2 == 0) ? 'code' : 'value';
+				$key = false;
+				$code = ($k % 2 == 0) ? 'code' : 'availability';
 				$even = ($k % 2 == 0) ? false : true;
 				$res[$i][$code] = $re;
 				
+				if ($code == 'code')
+				{
+					$key = array_search($re, array_column($rooms, 'code'));
+					if ($key)
+					{
+						$res[$i]['data'] = $rooms[$key];
+					}
+				}
+				
 				if ($even) $i++;
 			}
+			
+			// Записване на наличността на стаите в базата данни
+			$this->saveAvailability($res);
 			
 			return $res;
 		}
@@ -123,8 +142,7 @@ class SocketServer
 	
 	public function read()
 	{
-		$result = @socket_read($this->socket, $this->max_read) or die('Oops! It seems that the hotel reservation server is stopped! Sorry, try operation after time!');
-		
+		$result = @socket_read($this->socket, $this->max_read) or die('Неуспешна връзка със сървъра. Моля, опитайте по-късно.');
 		return mb_convert_encoding($result, 'UTF-8', 'WINDOWS-1251');
 	}
 	
@@ -154,9 +172,10 @@ class SocketServer
 		if (mb_substr($response, 0, 2) == self::RESP_OK)
 		{
 			$resp = mb_substr($response, 3, null);
-			$resp = rtrim($resp, PHP_EOL);
-			$resp = rtrim($resp, '|');
 			
+			$resp = rtrim($resp);
+			$resp = rtrim($resp, PHP_EOL);
+			$resp = rtrim($resp, self::DS);
 			
 			$resp = explode(self::DS, $resp);
 			
@@ -165,7 +184,8 @@ class SocketServer
 			{
 				if ($re || $re === "0")
 				{
-					$res[$r][] = $re;
+					$cc = (isset($res[$r])) ? count($res[$r]) : 0;
+					$res[$r][self::$vars[$cc]] = $re;
 				}
 				if (($k + 1) % 6 == 0) $r++;
 			}
@@ -176,12 +196,24 @@ class SocketServer
 		return false;
 	}
 	
-	public function updateRoomsFromServer($rooms)
+	public function saveAvailability($results)
 	{
-		foreach ($rooms as $room)
+		// Функция за записване на наличността в базата данни
+	}
+	
+	public static function dateDiff($date_start, $date_end, $_suffix = false)
+	{
+		$result = round(abs(strtotime($date_end)-strtotime($date_start))/86400);
+		
+		if ($_suffix)
 		{
-			
+			$result .= ' ';
+			$result .= ($result > 1) ? self::LNG_DAYS : self::LNG_DAY;
 		}
+		
+		$result = ($result == 0) ? 1 : $result;
+		
+		return $result;
 	}
 	
 	public function disconnect()
